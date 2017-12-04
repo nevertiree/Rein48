@@ -6,49 +6,55 @@ import numpy as np
 class Game:
 
     # 全局变量
-    table_matrix, table_matrix_size, score = None, 0, 0
-    score_list, action_list, reward_list = [], [], []
+    state_matrix, state_matrix_size, score = None, 0, 0
 
     def __init__(self, table_matrix_size=4):
+        # 生成新的界面，棋盘最小的尺寸为为4
         if table_matrix_size < 4:
-            self.table_matrix_size = 4
+            self.state_matrix_size = 4
         else:
-            self.table_matrix_size = table_matrix_size
-            # 生成初始化的Matrix（最小为4）
-            self.init_game()
+            self.state_matrix_size = table_matrix_size
+            self.reset()
 
-    def init_game(self):
+    def reset(self):
         # 刷新Matrix
-        self.table_matrix = self.create_matrix(self.table_matrix_size)
+        self.state_matrix = self.create_matrix(self.state_matrix_size)
+        self.state_matrix = self.add_random_grid(self.state_matrix)
         # 清零分数
         self.score = 0
-        # 清零动作序列
-        self.action_list = []
-        self.reward_list = []
 
-    # 玩一局游戏
-    def play_game(self):
+    # 玩游戏
+    def play(self):
         # 刷新游戏
-        self.init_game()
+        self.reset()
         while True:
-            keyboard_signal = self.random_signal()
-            if not self.status_controller(keyboard_signal=keyboard_signal):
+            # 此时Action是完全随机生成的
+            current_action = self.random_action()
+            if not self.step(action=current_action):
                 return
 
-    # 游戏场景管理
     # 这是2048的核心控件
-    def status_controller(self, keyboard_signal):
+    # 根据Action改变State，输出新的State，本次得到的Reward，以及游戏是否结束。
+    def step(self, action):
         # 首先判断游戏是否可以继续进行
-        if Game.is_game_over(self, Game.is_matrix_full(self.table_matrix)):
-            return False
-        # 如果可以进行游戏，则在空格处随机生成一个新的滑块
-        self.table_matrix = Game.add_random_grid(self.table_matrix)
-        # 根据信号对滑块进行移动
-        self.table_matrix = self.update_matrix(self.table_matrix, keyboard_signal)
-        return True
+        is_dead = False
+
+        # 游戏已经结束
+        if Game.is_game_over(self, Game.is_matrix_full(self.state_matrix)):
+            is_dead = True
+            return None, 0, is_dead
+
+        # 游戏没有结束，在空格处随机生成一个新的滑块
+        self.state_matrix = Game.add_random_grid(self.state_matrix)
+
+        # 更新State，获得新的State和Reward
+        self.state_matrix, reward = self.update_matrix(self.state_matrix, action)
+
+        return self.state_matrix, reward, is_dead
 
     @staticmethod
     def create_matrix(table_size):
+        # 生成一个空的棋盘，这个实现比较蠢
         matrix = [[] for _ in range(table_size)]
         for i in range(table_size):
             row = []
@@ -67,14 +73,15 @@ class Game:
 
     # 判断游戏是否已经结束
     def is_game_over(self, is_full_matrix):
+        # 这个写法太蠢了
         if is_full_matrix:
             # 试着左右移动一下
             for signal in ["UP", "DOWN", "RIGHT", "LEFT"]:
-                self.update_matrix(self.table_matrix, signal)
+                self.update_matrix(self.state_matrix, signal)
 
             # 抢救无效
-            if self.is_matrix_full(self.table_matrix):
-                print(np.matrix(self.table_matrix))
+            if self.is_matrix_full(self.state_matrix):
+                print(np.matrix(self.state_matrix))
                 print("Ops! Game Over !!!")
                 return True
             else:
@@ -93,9 +100,9 @@ class Game:
                         matrix[row_num][item_num] = 2
                         return matrix
 
-    # 随机的做出移动信号
+    # 随机的做出移动
     @staticmethod
-    def random_signal():
+    def random_action():
         rand_num = random.uniform(0, 1)
         # Up Down Left Right :  0.25 0.25 0.25 0.25
         if rand_num <= 0.25:
@@ -108,17 +115,23 @@ class Game:
             return "RIGHT"
 
     # 根据信号完成Matrix的更新 [8,2,0,2] -> [8,2,2,0] -> [8,4,0,0]
-    def update_matrix(self, matrix, signal):
-        self.action_list.append(signal)
+    # 返回新的State和Reward
+    @staticmethod
+    def update_matrix(matrix, signal):
+        # 这个实现方法非常蠢
+        # self.action_list.append(signal)
+
         # 先把Matrix中的全部滑块一到一侧
         matrix = Game.move_block(matrix, signal)
         # 做一次合并
-        matrix = Game.merge_block(self, matrix, signal)
+        matrix, reward = Game.merge_block(matrix, signal)
         # 再滑动一次，填补合并滑块时产生的空隙。
-        return Game.move_block(matrix, signal)
+        matrix = Game.move_block(matrix, signal)
+        return matrix, reward
 
     # 根据移动的方向，对滑块做出合并
-    def merge_block(self, matrix, signal):
+    @staticmethod
+    def merge_block(matrix, signal):
         matrix_size = len(matrix)
         reward_block_list = []
 
@@ -164,9 +177,9 @@ class Game:
                         matrix[row_num-1][col_num] = 0
 
         reward = sum(reward_block_list)
-        self.reward_list.append(reward)
-        self.score += reward
-        return matrix
+        # self.reward_list.append(reward)
+        # self.score += reward
+        return matrix, reward
 
     # 把滑块移动到一侧，使用双指针算法
     @staticmethod
@@ -223,3 +236,17 @@ class Game:
                         i, j = i+1, j+1
 
         return matrix
+
+if __name__ == '__main__':
+    new_game = Game()
+    score = [0]
+
+    while True:
+        print(np.matrix(new_game.state_matrix))
+        action = new_game.random_action()
+        new_game.state_matrix, current_reward, is_dead = new_game.step(action=action)
+        score.append(score[-1]+current_reward)
+        if is_dead:
+            break
+
+    print(score)
