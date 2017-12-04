@@ -6,7 +6,9 @@ import numpy as np
 class Game:
 
     # 全局变量
-    state_matrix, state_matrix_size, score = None, 0, 0
+    state_matrix, state_matrix_size = None, 0
+
+    ACTION_SPACE = ["UP", "DOWN", "RIGHT", "LEFT"]
 
     def __init__(self, table_matrix_size=4):
         # 生成新的界面，棋盘最小的尺寸为为4
@@ -20,8 +22,7 @@ class Game:
         # 刷新Matrix
         self.state_matrix = self.create_matrix(self.state_matrix_size)
         self.state_matrix = self.add_random_grid(self.state_matrix)
-        # 清零分数
-        self.score = 0
+        return self.state_matrix
 
     # 玩游戏
     def play(self):
@@ -42,7 +43,7 @@ class Game:
         # 游戏已经结束
         if Game.is_game_over(self, Game.is_matrix_full(self.state_matrix)):
             is_dead = True
-            return None, 0, is_dead
+            return self.create_matrix(), 0, is_dead
 
         # 游戏没有结束，在空格处随机生成一个新的滑块
         self.state_matrix = Game.add_random_grid(self.state_matrix)
