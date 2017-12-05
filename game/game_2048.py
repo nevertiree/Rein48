@@ -24,17 +24,6 @@ class Game:
         self.state_matrix = self.add_random_grid(self.state_matrix)
         return self.state_matrix
 
-    # 玩游戏
-    def play(self):
-        # 刷新游戏
-        self.reset()
-        while True:
-            # 此时Action是完全随机生成的
-            current_action = self.random_action()
-            if not self.step(action=current_action):
-                return
-
-    # 这是2048的核心控件
     # 根据Action改变State，输出新的State，本次得到的Reward，以及游戏是否结束。
     def step(self, action):
         # 首先判断游戏是否可以继续进行
@@ -54,7 +43,7 @@ class Game:
         return self.state_matrix, reward, is_dead
 
     @staticmethod
-    def create_matrix(table_size):
+    def create_matrix(table_size=4):
         # 生成一个空的棋盘，这个实现比较蠢
         matrix = [[] for _ in range(table_size)]
         for i in range(table_size):
@@ -119,9 +108,6 @@ class Game:
     # 返回新的State和Reward
     @staticmethod
     def update_matrix(matrix, signal):
-        # 这个实现方法非常蠢
-        # self.action_list.append(signal)
-
         # 先把Matrix中的全部滑块一到一侧
         matrix = Game.move_block(matrix, signal)
         # 做一次合并
@@ -136,7 +122,6 @@ class Game:
         matrix_size = len(matrix)
         reward_block_list = []
 
-        # Move to Left
         if signal == "LEFT":
             # [8,2,2,2] - [8,4,0,2]
             for row_num in range(matrix_size):
@@ -147,7 +132,6 @@ class Game:
                         matrix[row_num][col_num] *= 2
                         matrix[row_num][col_num+1] = 0
 
-        # Move to Right
         if signal == "RIGHT":
             for row_num in range(matrix_size):
                 for col_num in range(matrix_size-1, 1, -1):
@@ -157,7 +141,6 @@ class Game:
                         matrix[row_num][col_num] *= 2
                         matrix[row_num][col_num-1] = 0
 
-        # Move Upside
         if signal == "UP":
             for col_num in range(matrix_size):
                 for row_num in range(matrix_size-1):
@@ -167,7 +150,6 @@ class Game:
                         matrix[row_num][col_num] *= 2
                         matrix[row_num+1][col_num] = 0
 
-        # Move Downside
         if signal == "DOWN":
             for col_num in range(matrix_size):
                 for row_num in range(matrix_size-1, 1, -1):
@@ -208,7 +190,6 @@ class Game:
                     matrix[row_num] = matrix[row_num][::-1]
 
         if signal == "UP":
-
             for col_num in range(matrix_size):
                 i, j = 0, 0
                 while i < matrix_size and j < matrix_size:
@@ -238,16 +219,16 @@ class Game:
 
         return matrix
 
+
 if __name__ == '__main__':
     new_game = Game()
     score = [0]
-
     while True:
         print(np.matrix(new_game.state_matrix))
-        action = new_game.random_action()
-        new_game.state_matrix, current_reward, is_dead = new_game.step(action=action)
+        current_action = new_game.random_action()
+        new_game.state_matrix, current_reward, is_over = new_game.step(action=current_action)
         score.append(score[-1]+current_reward)
-        if is_dead:
+        if is_over:
             break
 
     print(score)
