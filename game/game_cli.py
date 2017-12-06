@@ -32,7 +32,7 @@ class Game:
         # 游戏已经结束
         if Game.is_game_over(self, Game.is_matrix_full(self.state_matrix)):
             is_dead = True
-            return self.create_matrix(), 0, is_dead
+            return self.state_matrix, 0, is_dead
 
         # 游戏没有结束，在空格处随机生成一个新的滑块
         self.state_matrix = Game.add_random_grid(self.state_matrix)
@@ -71,8 +71,8 @@ class Game:
 
             # 抢救无效
             if self.is_matrix_full(self.state_matrix):
-                print(np.matrix(self.state_matrix))
-                print("Ops! Game Over !!!")
+                # print(np.matrix(self.state_matrix))
+                # print("Ops! Game Over !!!")
                 return True
             else:
                 return False
@@ -118,11 +118,11 @@ class Game:
 
     # 根据移动的方向，对滑块做出合并
     @staticmethod
-    def merge_block(matrix, signal):
+    def merge_block(matrix, action):
         matrix_size = len(matrix)
         reward_block_list = []
 
-        if signal == "LEFT":
+        if action == "LEFT" or action == 0:
             # [8,2,2,2] - [8,4,0,2]
             for row_num in range(matrix_size):
                 for col_num in range(matrix_size-1):
@@ -132,7 +132,7 @@ class Game:
                         matrix[row_num][col_num] *= 2
                         matrix[row_num][col_num+1] = 0
 
-        if signal == "RIGHT":
+        if action == "RIGHT" or action == 1:
             for row_num in range(matrix_size):
                 for col_num in range(matrix_size-1, 1, -1):
                     if matrix[row_num][col_num] == matrix[row_num][col_num-1]:
@@ -141,7 +141,7 @@ class Game:
                         matrix[row_num][col_num] *= 2
                         matrix[row_num][col_num-1] = 0
 
-        if signal == "UP":
+        if action == "UP" or action == 2:
             for col_num in range(matrix_size):
                 for row_num in range(matrix_size-1):
                     if matrix[row_num][col_num] == matrix[row_num+1][col_num]:
@@ -150,7 +150,7 @@ class Game:
                         matrix[row_num][col_num] *= 2
                         matrix[row_num+1][col_num] = 0
 
-        if signal == "DOWN":
+        if action == "DOWN" or action == 3:
             for col_num in range(matrix_size):
                 for row_num in range(matrix_size-1, 1, -1):
                     if matrix[row_num][col_num] == matrix[row_num-1][col_num]:
