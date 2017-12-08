@@ -5,21 +5,20 @@ import numpy as np
 
 class Game:
 
-    # 全局变量
     state_matrix, state_matrix_size = None, 0
 
     ACTION_SPACE = ["UP", "DOWN", "RIGHT", "LEFT"]
 
+    # 生成新的界面，棋盘最小的尺寸为为4
     def __init__(self, table_matrix_size=4):
-        # 生成新的界面，棋盘最小的尺寸为为4
         if table_matrix_size < 4:
             self.state_matrix_size = 4
         else:
             self.state_matrix_size = table_matrix_size
             self.reset()
 
+    # 刷新Matrix
     def reset(self):
-        # 刷新Matrix
         self.state_matrix = self.create_matrix(self.state_matrix_size)
         self.state_matrix = self.add_random_grid(self.state_matrix)
         return self.state_matrix
@@ -41,6 +40,26 @@ class Game:
         self.state_matrix, reward = self.update_matrix(self.state_matrix, action)
 
         return self.state_matrix, reward, is_dead
+
+    def play(self, strategy="RAND", show_result=False):
+        self.reset()
+        is_game_over = False
+
+        # 完成一局游戏
+        while not is_game_over:
+            if strategy == "RAND":
+                action = self.random_action()
+            else:
+                action = self.random_action()
+
+            self.state_matrix, _, is_game_over = self.step(action)
+
+        # 展示最终结果
+        if show_result:
+            print(np.array(self.state_matrix))
+
+        # 游戏结束
+        return np.sum(self.state_matrix)
 
     @staticmethod
     def create_matrix(table_size=4):
@@ -86,7 +105,7 @@ class Game:
             for row_num in range(len(matrix)):
                 for item_num in range(len(matrix[row_num])):
                     if matrix[row_num][item_num] == 0 and \
-                                    random.uniform(0, 1) > 0.95:
+                            random.uniform(0, 1) > 0.95:
                         matrix[row_num][item_num] = 2
                         return matrix
 
@@ -160,8 +179,6 @@ class Game:
                         matrix[row_num-1][col_num] = 0
 
         reward = sum(reward_block_list)
-        # self.reward_list.append(reward)
-        # self.score += reward
         return matrix, reward
 
     # 把滑块移动到一侧，使用双指针算法
@@ -218,17 +235,3 @@ class Game:
                         i, j = i+1, j+1
 
         return matrix
-
-
-if __name__ == '__main__':
-    new_game = Game()
-    score = [0]
-    while True:
-        print(np.matrix(new_game.state_matrix))
-        current_action = new_game.random_action()
-        new_game.state_matrix, current_reward, is_over = new_game.step(action=current_action)
-        score.append(score[-1]+current_reward)
-        if is_over:
-            break
-
-    print(score)
