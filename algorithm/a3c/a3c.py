@@ -14,17 +14,18 @@ import matplotlib.pyplot as plt
 OUTPUT_GRAPH = True
 LOG_DIR = './log'  # 输出log目录
 N_WORKERS = multiprocessing.cpu_count()  # 并行work数量等于CPU核数
-MAX_GLOBAL_EP = 10000
+MAX_EPISODE_TIME = 10000
 GLOBAL_NET_SCOPE = 'Global_Net'  # 是否为全局网络
-UPDATE_GLOBAL_ITER = 10  # 更新Global的频率
+current_episode_time = 0
+MAX_STEP_NUM = 100
 GAMMA = 0.9  # 折扣率
 ENTROPY_BETA = 0.001
 LR_A = 0.001    # actor学习率
 LR_C = 0.001    # critic学习率
 GLOBAL_RUNNING_R = []
-GLOBAL_EP = 0
 
 SCORE = []
+TD_ERROR = []
 
 env = Game()
 N_S = 4
@@ -104,7 +105,7 @@ class Agent(object):
             # todo 卷积神经网络设计
             flat_state = tf.reshape(self.state, [-1, 4 * 4 * 1])
             flat = tf.layers.dense(inputs=flat_state,
-                                   units=1024,
+                                   units=64,
                                    activation=tf.nn.relu6,
                                    kernel_initializer=w_init,
                                    name='la')
@@ -120,7 +121,7 @@ class Agent(object):
         with tf.variable_scope('critic'):
             flat_state = tf.reshape(self.state, [-1, 4 * 4 * 1])
             l_c = tf.layers.dense(inputs=flat_state,
-                                  units=100,
+                                  units=64,
                                   activation=tf.nn.relu6,
                                   kernel_initializer=w_init,
                                   name='lc')
@@ -158,87 +159,65 @@ class Worker(object):
         self.AC = Agent(name, global_ac)
 
     def work(self):
-        global GLOBAL_RUNNING_R, GLOBAL_EP
-        total_step = 1
-        # 缓存 用于n_steps更新
-        buf_state, buf_action, buf_reward = [], [], []
+        global GLOBAL_RUNNING_R, current_episode_time
+        current_episode_time = 0
 
-        # GLOBAL_EP是迭代次数
-        while not COORD.should_stop() and GLOBAL_EP < MAX_GLOBAL_EP:
+        # 整个训练在迭代MAX_EPISODE_TIME次后结束
+        while not COORD.should_stop() and current_episode_time < MAX_EPISODE_TIME:
             # 新开一个episode, reward清零
-            state = np.array(self.env.reset())
-            ep_r = 0
-            # 迭代直至episode结束
-            while True:
+            state, is_game_over = self.env.reset(), False
+            state = np.array(state)
+            current_step_num = 0
+            # 缓存(用于n_steps更新)
+            buf_state, buf_action, buf_reward = [], [], []
+
+            # 等到Episode结束或者经过较长的一段间隔
+            while not is_game_over and current_step_num < MAX_STEP_NUM:
                 # 根据state做出action，并得到new state
                 action = self.AC.choose_action(state)
-                new_state, reward, done = self.env.step(action)
-                new_state = np.array(new_state)
-
-                # Done说明本episode结束
-                if done:
-                    reward = -5
-
-                # 更新总的reward值
-                ep_r += reward
-
-                # 把state action reward 做一次记录，每个Iter清理一次
+                state, reward, is_game_over = self.env.step(action)
+                state = np.array(state)
+                # 存储序列值
                 buf_state.append(state)
                 buf_action.append(action)
                 buf_reward.append(reward)
+                # 迭代计数控制器
+                current_step_num += 1
+                current_episode_time += 1
 
-                # 每 UPDATE_GLOBAL_ITER 步 或者回合完了, 进行 sync 操作
-                if total_step % UPDATE_GLOBAL_ITER == 0 or done:   # update global and assign to local net
-                    # 获得用于计算 TD error的下一state的value
-                    if done:
-                        new_state_value = 0
-                        this_score = np.sum(new_state)
-                        SCORE.append(this_score)
-                        print(this_score)
-                    else:
-                        new_state_value = SESS.run(self.AC.estimated_value,
-                                                   {self.AC.state: new_state[np.newaxis, :]})[0, 0]
+            SCORE.append(np.sum(state))
 
-                    # 用n_steps forward view计算Target state value
-                    buf_target_value = []
-                    # reverse buffer r
-                    for reward in buf_reward[::-1]:
-                        new_state_value = reward + GAMMA * new_state_value
-                        buf_target_value.append(new_state_value)
-                    buf_target_value.reverse()
+            # 由后往前的算Target Value
+            if is_game_over:
+                target_value = 0
+                print(np.sum(state))
+            else:
+                target_value = SESS.run(self.AC.estimated_value, {self.AC.state: state[np.newaxis]})[0, 0]
 
-                    # 用于训练的值
-                    buf_state, buf_action = np.array(buf_state), np.array(buf_action)
-                    buf_target_value = np.vstack(buf_target_value)
+            # Forward View计算各个State的Target Value
+            buf_target_value = []
+            for reward in buf_reward[::-1]:
+                target_value = reward + GAMMA * target_value
+                buf_target_value.append(target_value)
+            buf_target_value.reverse()
 
-                    feed_dict = {
-                        self.AC.state: buf_state,
-                        self.AC.action: buf_action,
-                        self.AC.target_value: buf_target_value,
-                    }
+            # 数据：用于更新Actor和Critic的参数
+            buf_target_value = np.vstack(buf_target_value)
 
-                    buf_state, buf_action, buf_reward = [], [], []
+            feed_dict = {
+                self.AC.state: buf_state,
+                self.AC.action: buf_action,
+                self.AC.target_value: buf_target_value,
+            }
+            # print(feed_dict)
 
-                    # 做Sync
-                    self.AC.update_global(feed_dict)
-                    self.AC.pull_global()
+            buf_state, buf_action, buf_reward = [], [], []
 
-                # 更新state和step
-                state = new_state
-                total_step += 1
+            # 同步数据
+            self.AC.update_global(feed_dict)
+            self.AC.pull_global()
 
-                if done:
-                    if len(GLOBAL_RUNNING_R) == 0:  # record running episode reward
-                        GLOBAL_RUNNING_R.append(ep_r)
-                    else:
-                        GLOBAL_RUNNING_R.append(0.99 * GLOBAL_RUNNING_R[-1] + 0.01 * ep_r)
-                    print(
-                        self.name,
-                        "Ep:", GLOBAL_EP,
-                        "| Ep_r: %i" % GLOBAL_RUNNING_R[-1],
-                          )
-                    GLOBAL_EP += 1
-                    break
+            print("EPISODE_TIME: %d" % current_episode_time)
 
 
 if __name__ == "__main__":
@@ -275,7 +254,12 @@ if __name__ == "__main__":
     # tf 的线程调度
     COORD.join(worker_threads)
 
-    plt.plot(np.arange(len(GLOBAL_RUNNING_R)), GLOBAL_RUNNING_R)
+    print(SCORE)
+    print(TD_ERROR)
+
+    # plt.plot(np.arange(len(GLOBAL_RUNNING_R)), GLOBAL_RUNNING_R)
+    plt.plot(np.arange(len(SCORE)),SCORE)
+    plt.plot(np.arange(len(TD_ERROR)),TD_ERROR)
     plt.xlabel('step')
     plt.ylabel('Total moving reward')
     plt.show()
