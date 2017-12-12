@@ -44,7 +44,7 @@ class Agent(object):
 
                 # 取build_net()的最后两个返回值
                 # 前两个返回值是action_prob和estimated_value，只有本地Agent需要
-                self.actor_params, self.critic_params = self._build_net(scope)[-2:]
+                self.actor_params, self.critic_params = self._get_network_output(scope)[-2:]
         # 本地Agent
         else:
             # 基础数据
@@ -55,33 +55,13 @@ class Agent(object):
                 self.target_value = tf.placeholder(tf.float32, [None, 1], 'Target_Value')
 
                 # 取build_net()全部返回值
-                self.action_prob, self.estimated_value, self.actor_params, self.critic_params = self._build_net(scope)
+                self.action_prob, self.estimated_value, self.actor_params, self.critic_params = self._get_network_output(scope)
 
-                # 根据TD Error计算Loss
-                td_error = tf.subtract(self.target_value, self.estimated_value, name='TD_error')
+                self.actor_loss, self.critic_loss = \
+                    Agent._get_loss_value(self.target_value, self.estimated_value, self.action, self.action_prob)
 
-                # 计算Critic loss
-                with tf.name_scope('c_loss'):
-                    # TD Error的平方和平均
-                    self.critic_loss = tf.reduce_mean(tf.square(td_error))
-
-                # 计算Actor loss
-                # todo 重点分析Loss Function
-                with tf.name_scope('a_loss'):
-                    log_prob = tf.reduce_sum(tf.log(self.action_prob) * tf.one_hot(self.action, N_A, dtype=tf.float32),
-                                             axis=1,
-                                             keep_dims=True)
-                    exp_v = log_prob * td_error
-                    entropy = -tf.reduce_sum(self.action_prob * tf.log(self.action_prob + 1e-5),
-                                             axis=1,
-                                             keep_dims=True)  # encourage exploration
-                    self.exp_v = ENTROPY_BETA * entropy + exp_v
-                    self.actor_loss = tf.reduce_mean(-self.exp_v)
-
-                # 计算Loss Function的梯度
-                with tf.name_scope('local_grad'):
-                    self.actor_grads = tf.gradients(self.actor_loss, self.actor_params)
-                    self.critic_grads = tf.gradients(self.critic_loss, self.critic_params)
+                self.actor_grads, self.critic_grads = \
+                    Agent._get_loss_gradient(self.actor_loss, self.actor_params, self.critic_loss, self.critic_params)
 
             # 同步
             with tf.name_scope('sync'):
@@ -96,8 +76,41 @@ class Agent(object):
                     self.update_actor_op = OPT_A.apply_gradients(zip(self.actor_grads, global_ac.actor_params))
                     self.update_critic_op = OPT_C.apply_gradients(zip(self.critic_grads, global_ac.critic_params))
 
+    @staticmethod
+    def _get_loss_value(target_value, estimated_value, action, action_prob):
+        # 根据TD Error计算Loss
+        td_error = tf.subtract(target_value,estimated_value, name='TD_error')
+
+        # 计算Critic loss
+        with tf.name_scope('c_loss'):
+            # TD Error的平方和平均
+            critic_loss = tf.reduce_mean(tf.square(td_error))
+
+        # 计算Actor loss
+        # todo 重点分析Loss Function
+        with tf.name_scope('a_loss'):
+            log_prob = tf.reduce_sum(tf.log(action_prob) * tf.one_hot(action, N_A, dtype=tf.float32),
+                                     axis=1,
+                                     keep_dims=True)
+            exp_v = log_prob * td_error
+            entropy = -tf.reduce_sum(action_prob * tf.log(action_prob + 1e-5),
+                                     axis=1,
+                                     keep_dims=True)  # encourage exploration
+            exp_v = ENTROPY_BETA * entropy + exp_v
+            actor_loss = tf.reduce_mean(-exp_v)
+
+        return actor_loss, critic_loss
+
+    # 计算Loss Function的梯度
+    @staticmethod
+    def _get_loss_gradient(actor_loss, actor_params, critic_loss, critic_params):
+        with tf.name_scope('local_grad'):
+            actor_grads = tf.gradients(actor_loss, actor_params)
+            critic_grads = tf.gradients(critic_loss, critic_params)
+        return actor_grads, critic_grads
+
     # 搭建Actor和Critic网络
-    def _build_net(self, scope):
+    def _get_network_output(self, scope):
         w_init = tf.random_normal_initializer(0., .1)
 
         # Actor网络
