@@ -13,10 +13,9 @@ import matplotlib.pyplot as plt
 
 OUTPUT_GRAPH = True
 LOG_DIR = './log'  # 输出log目录
-# N_WORKERS = multiprocessing.cpu_count()  # 并行work数量等于CPU核数
 N_WORKERS = 1
+N_WORKERS = multiprocessing.cpu_count()  # 并行work数量等于CPU核数
 MAX_EPISODE_TIME = 10000
-GLOBAL_NET_SCOPE = 'Global_Net'  # 是否为全局网络
 current_episode_time = 0
 MAX_STEP_NUM = 100
 ENTROPY_BETA = 0.001
@@ -32,50 +31,55 @@ N_S = 4
 N_A = 4
 
 
-class Agent(object):
+class GlobalAgent:
+    class __GlobalNetwork:
+        def __init__(self, scope="GLOBAL_NETWORK"):
+            with tf.variable_scope(scope):
+                self.state = tf.placeholder(tf.float32, [None, N_S, N_S], 'State')
+                # todo
+                self.actor_params, self.critic_params = LocalAgent.get_network_output(self.state, scope)[-2:]
+
+    instance = None
+
+    def __init__(self, scope="GLOBAL_NETWORK"):
+        if not GlobalAgent.instance:
+            GlobalAgent.instance = GlobalAgent.__GlobalNetwork(scope)
+
+    def __getattr__(self, item):
+        return getattr(self.instance, item)
+
+
+class LocalAgent:
     def __init__(self, scope, global_ac=None):
-        # Agent分为两种：全局Agent负责汇总数据，本地Agent负责计算loss
+        # 基础数据
+        with tf.variable_scope(scope):
+            # 读入State、Action和Target_Value
+            self.state = tf.placeholder(tf.float32, [None, N_S, N_S], 'State')
+            self.action = tf.placeholder(tf.int32, [None, 1], 'Action')
+            self.target_value = tf.placeholder(tf.float32, [None, 1], 'Target_Value')
 
-        # 全局Agent
-        if scope == GLOBAL_NET_SCOPE:
-            with tf.variable_scope(scope):
-                # 读入State，此处为 4 * 4 的矩阵
-                self.state = tf.placeholder(tf.float32, [None, N_S, N_S], 'State')
+            # 取build_net()全部返回值
+            self.action_prob, self.estimated_value, self.actor_params, self.critic_params = \
+                self.get_network_output(self.state, scope)
 
-                # 取build_net()的最后两个返回值
-                # 前两个返回值是action_prob和estimated_value，只有本地Agent需要
-                self.actor_params, self.critic_params = self._get_network_output(self.state, scope)[-2:]
-        # 本地Agent
-        else:
-            # 基础数据
-            with tf.variable_scope(scope):
-                # 读入State、Action和Target_Value
-                self.state = tf.placeholder(tf.float32, [None, N_S, N_S], 'State')
-                self.action = tf.placeholder(tf.int32, [None, 1], 'Action')
-                self.target_value = tf.placeholder(tf.float32, [None, 1], 'Target_Value')
+            self.actor_loss, self.critic_loss = \
+                LocalAgent._get_loss_value(self.target_value, self.estimated_value, self.action, self.action_prob)
 
-                # 取build_net()全部返回值
-                self.action_prob, self.estimated_value, self.actor_params, self.critic_params = \
-                    self._get_network_output(self.state, scope)
+            self.actor_grads, self.critic_grads = \
+                LocalAgent._get_loss_gradient(self.actor_loss, self.actor_params, self.critic_loss, self.critic_params)
 
-                self.actor_loss, self.critic_loss = \
-                    Agent._get_loss_value(self.target_value, self.estimated_value, self.action, self.action_prob)
-
-                self.actor_grads, self.critic_grads = \
-                    Agent._get_loss_gradient(self.actor_loss, self.actor_params, self.critic_loss, self.critic_params)
-
-            # 同步
-            with tf.name_scope('sync'):
-                # 从远程获取参数
-                with tf.name_scope('pull'):
-                    self.pull_actor_params_op = \
-                        [l_p.assign(g_p) for l_p, g_p in zip(self.actor_params, global_ac.actor_params)]
-                    self.pull_c_params_op = \
-                        [l_p.assign(g_p) for l_p, g_p in zip(self.critic_params, global_ac.critic_params)]
-                # 向远程提交数据
-                with tf.name_scope('push'):
-                    self.update_actor_op = OPT_A.apply_gradients(zip(self.actor_grads, global_ac.actor_params))
-                    self.update_critic_op = OPT_C.apply_gradients(zip(self.critic_grads, global_ac.critic_params))
+        # 同步
+        with tf.name_scope('sync'):
+            # 从远程获取参数
+            with tf.name_scope('pull'):
+                self.pull_actor_params_op = \
+                    [l_p.assign(g_p) for l_p, g_p in zip(self.actor_params, global_ac.actor_params)]
+                self.pull_c_params_op = \
+                    [l_p.assign(g_p) for l_p, g_p in zip(self.critic_params, global_ac.critic_params)]
+            # 向远程提交数据
+            with tf.name_scope('push'):
+                self.update_actor_op = OPT_A.apply_gradients(zip(self.actor_grads, global_ac.actor_params))
+                self.update_critic_op = OPT_C.apply_gradients(zip(self.critic_grads, global_ac.critic_params))
 
     @staticmethod
     def _get_loss_value(target_value, estimated_value, action, action_prob):
@@ -115,7 +119,7 @@ class Agent(object):
 
     # 搭建Actor和Critic网络
     @staticmethod
-    def _get_network_output(state, scope):
+    def get_network_output(state, scope):
         # 参数初始化工作非常重要
         w_init = tf.contrib.layers.xavier_initializer()
         state = tf.reshape(state, [-1, 4 * 4 * 1])
@@ -174,11 +178,11 @@ class Agent(object):
 
 
 class Worker(object):
-    def __init__(self, name, global_ac):
+    def __init__(self, worker_name, global_network):
         self.env = Game()
-        self.name = name
+        self.name = worker_name
         # 所服务的全局Actor-Critic
-        self.AC = Agent(name, global_ac)
+        self.local_network = LocalAgent(worker_name, global_network)
 
     def work(self):
         global GLOBAL_RUNNING_R, current_episode_time
@@ -196,7 +200,7 @@ class Worker(object):
             # 等到Episode结束或者经过较长的一段间隔
             while not is_game_over and current_step_num < MAX_STEP_NUM:
                 # 根据state做出action，并得到new state
-                action = self.AC.choose_action(state)
+                action = self.local_network.choose_action(state)
                 state, reward, is_game_over = self.env.step(action)
                 state = np.array(state)
                 # 存储序列值
@@ -215,26 +219,26 @@ class Worker(object):
                 target_value = 0
                 print(np.sum(state))
             else:
-                target_value = SESS.run(self.AC.estimated_value,
-                                        feed_dict={self.AC.state: state[np.newaxis]})[0, 0]
+                target_value = SESS.run(self.local_network.estimated_value,
+                                        feed_dict={self.local_network.state: state[np.newaxis]})[0, 0]
 
             buf_target_value = Worker._get_target_value_list(reward_list=buf_reward, last_target_value=target_value)
             buf_action = np.vstack(buf_action)
             feed_dict = {
-                self.AC.state: buf_state,
-                self.AC.action: buf_action,
-                self.AC.target_value: buf_target_value
+                self.local_network.state: buf_state,
+                self.local_network.action: buf_action,
+                self.local_network.target_value: buf_target_value
             }
             # 同步数据
-            self.AC.update_global(feed_dict=feed_dict)
-            self.AC.pull_global()
+            self.local_network.update_global(feed_dict=feed_dict)
+            self.local_network.pull_global()
 
-            summary = SESS.run(merged, feed_dict={
-                self.AC.state: buf_state[0][np.newaxis],
-                self.AC.action: buf_action[0][np.newaxis],
-                self.AC.target_value: buf_target_value[0][np.newaxis]
-            })
-            writer.add_summary(summary, current_episode_time)
+            # summary = SESS.run(merged, feed_dict={
+            #     self.AC.state: buf_state[0][np.newaxis],
+            #     self.AC.action: buf_action[0][np.newaxis],
+            #     self.AC.target_value: buf_target_value[0][np.newaxis]
+            # })
+            # writer.add_summary(summary, current_episode_time)
 
             print("EPISODE_TIME: %d" % current_episode_time)
 
@@ -260,12 +264,13 @@ if __name__ == "__main__":
         OPT_A = tf.train.RMSPropOptimizer(LR_A, name='RMSPropA')
         OPT_C = tf.train.RMSPropOptimizer(LR_C, name='RMSPropC')
         # 输入GLOBAL_NET_SCOPE将会生成一个特殊的ACNet实例（适用于全局）
-        GLOBAL_AC = Agent(GLOBAL_NET_SCOPE)
+        GLOBAL_AGENT = GlobalAgent()
+        # GLOBAL_AC = Agent(GLOBAL_NET_SCOPE)
         workers = []
         # Create worker
         for i in range(N_WORKERS):
             i_name = 'W_%i' % i   # worker name
-            workers.append(Worker(i_name, GLOBAL_AC))
+            workers.append(Worker(i_name, GLOBAL_AGENT))
 
     # TensorFlow 用于并行的工具
     COORD = tf.train.Coordinator()
