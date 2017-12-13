@@ -27,8 +27,7 @@ SCORE = []
 TD_ERROR = []
 
 env = Game()
-N_S = 4
-N_A = 4
+N_S, N_A = 4, 4
 
 
 class GlobalAgent:
@@ -36,8 +35,8 @@ class GlobalAgent:
         def __init__(self, scope="GLOBAL_NETWORK"):
             with tf.variable_scope(scope):
                 self.state = tf.placeholder(tf.float32, [None, N_S, N_S], 'State')
-                # todo
-                self.actor_params, self.critic_params = LocalAgent.get_network_output(self.state, scope)[-2:]
+                self.action_prob, self.estimated_value = NetworkTool.get_network_output(self.state)
+                self.actor_params, self.critic_params = NetworkTool.get_network_params(scope)
 
     instance = None
 
@@ -58,15 +57,14 @@ class LocalAgent:
             self.action = tf.placeholder(tf.int32, [None, 1], 'Action')
             self.target_value = tf.placeholder(tf.float32, [None, 1], 'Target_Value')
 
-            # 取build_net()全部返回值
-            self.action_prob, self.estimated_value, self.actor_params, self.critic_params = \
-                self.get_network_output(self.state, scope)
+            self.action_prob, self.estimated_value = NetworkTool.get_network_output(self.state)
+            self.actor_params, self.critic_params = NetworkTool.get_network_params(scope)
 
             self.actor_loss, self.critic_loss = \
-                LocalAgent._get_loss_value(self.target_value, self.estimated_value, self.action, self.action_prob)
+                NetworkTool.get_loss_value(self.target_value, self.estimated_value, self.action, self.action_prob)
 
             self.actor_grads, self.critic_grads = \
-                LocalAgent._get_loss_gradient(self.actor_loss, self.actor_params, self.critic_loss, self.critic_params)
+                NetworkTool.get_loss_gradient(self.actor_loss, self.actor_params, self.critic_loss, self.critic_params)
 
         # 同步
         with tf.name_scope('sync'):
@@ -81,9 +79,25 @@ class LocalAgent:
                 self.update_actor_op = OPT_A.apply_gradients(zip(self.actor_grads, global_ac.actor_params))
                 self.update_critic_op = OPT_C.apply_gradients(zip(self.critic_grads, global_ac.critic_params))
 
+    def push(self, feed_dict):
+        SESS.run([self.update_actor_op, self.update_critic_op], feed_dict=feed_dict)
+
+    def pull(self):
+        SESS.run([self.pull_actor_params_op, self.pull_c_params_op])
+
+    # 根据state选择action
+    def choose_action(self, s):
+        prob_weights = SESS.run(self.action_prob, feed_dict={self.state: s[np.newaxis, :]})
+        # ravel()行序优先拉平
+        action = np.random.choice(range(prob_weights.shape[1]), p=prob_weights.ravel())
+        return action
+
+
+class NetworkTool:
+
     @staticmethod
-    def _get_loss_value(target_value, estimated_value, action, action_prob):
-        # 根据TD Error计算Loss
+    def get_loss_value(target_value, estimated_value, action, action_prob):
+        # TD Error = 目标值 - 估计值
         td_error = tf.subtract(target_value, estimated_value, name='TD_error')
 
         # 计算Critic loss
@@ -110,23 +124,21 @@ class LocalAgent:
 
     # 计算Loss Function的梯度
     @staticmethod
-    def _get_loss_gradient(actor_loss, actor_params, critic_loss, critic_params):
+    def get_loss_gradient(actor_loss, actor_params, critic_loss, critic_params):
         with tf.name_scope('local_gradient'):
             actor_grads = tf.gradients(actor_loss, actor_params, name='actor_gradient')
             critic_grads = tf.gradients(critic_loss, critic_params, name='critic_gradient')
 
         return actor_grads, critic_grads
 
-    # 搭建Actor和Critic网络
+    # Actor和Critic网络的输出
     @staticmethod
-    def get_network_output(state, scope):
+    def get_network_output(state):
         # 参数初始化工作非常重要
         w_init = tf.contrib.layers.xavier_initializer()
         state = tf.reshape(state, [-1, 4 * 4 * 1])
 
-        # Actor网络
-        with tf.variable_scope('actor'):
-            # todo 卷积神经网络设计
+        with tf.variable_scope('Actor'):
             actor_fc_layer_1 = tf.layers.dense(inputs=state,
                                                units=64,
                                                activation=tf.nn.relu6,
@@ -141,9 +153,7 @@ class LocalAgent:
                                                name='actor_fc_layer_2')
             action_prob = tf.nn.softmax(actor_fc_layer_2, name="action_prob")
 
-        # Critic网络
-        # todo 卷积神经网络设计
-        with tf.variable_scope('critic'):
+        with tf.variable_scope('Critic'):
             critic_fc_layer_1 = tf.layers.dense(inputs=state,
                                                 units=64,
                                                 activation=tf.nn.relu6,
@@ -156,33 +166,23 @@ class LocalAgent:
                                               name='estimated_value')
             # tf.summary.scalar('estimated_value', estimated_value)
 
-        # Actor-Critic的参数
-        actor_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope + '/actor')
-        critic_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope + '/critic')
+        return action_prob, estimated_value
 
-        return action_prob, estimated_value, actor_params, critic_params
+    # Actor-Critic的参数
+    @staticmethod
+    def get_network_params(scope):
+        actor_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope + '/Actor')
+        critic_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope + '/Critic')
 
-    def update_global(self, feed_dict):
-        SESS.run([self.update_actor_op, self.update_critic_op], feed_dict=feed_dict)
-
-    def pull_global(self):
-        SESS.run([self.pull_actor_params_op, self.pull_c_params_op])
-
-    # 根据state选择action
-    def choose_action(self, s):
-        prob_weights = SESS.run(self.action_prob, feed_dict={self.state: s[np.newaxis, :]})
-        # ravel()行序优先拉平
-        action = np.random.choice(range(prob_weights.shape[1]),
-                                  p=prob_weights.ravel())  # select action w.r.t the actions prob
-        return action
+        return actor_params, critic_params
 
 
 class Worker(object):
-    def __init__(self, worker_name, global_network):
+    def __init__(self, worker_name, global_agent_name):
         self.env = Game()
         self.name = worker_name
         # 所服务的全局Actor-Critic
-        self.local_network = LocalAgent(worker_name, global_network)
+        self.local_network = LocalAgent(worker_name, global_agent_name)
 
     def work(self):
         global GLOBAL_RUNNING_R, current_episode_time
@@ -230,8 +230,8 @@ class Worker(object):
                 self.local_network.target_value: buf_target_value
             }
             # 同步数据
-            self.local_network.update_global(feed_dict=feed_dict)
-            self.local_network.pull_global()
+            self.local_network.push(feed_dict=feed_dict)
+            self.local_network.pull()
 
             # summary = SESS.run(merged, feed_dict={
             #     self.AC.state: buf_state[0][np.newaxis],
@@ -269,7 +269,7 @@ if __name__ == "__main__":
         workers = []
         # Create worker
         for i in range(N_WORKERS):
-            i_name = 'W_%i' % i   # worker name
+            i_name = 'Worker_%i' % i   # worker name
             workers.append(Worker(i_name, GLOBAL_AGENT))
 
     # TensorFlow 用于并行的工具
