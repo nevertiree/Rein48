@@ -14,11 +14,10 @@ import matplotlib.pyplot as plt
 OUTPUT_GRAPH = True
 LOG_DIR = './log'  # 输出log目录
 N_WORKERS = multiprocessing.cpu_count()  # 并行work数量等于CPU核数
-MAX_EPISODE_TIME = 10000
+MAX_EPISODE_TIME = 100000
 GLOBAL_NET_SCOPE = 'Global_Net'  # 是否为全局网络
 current_episode_time = 0
 MAX_STEP_NUM = 100
-GAMMA = 0.9  # 折扣率
 ENTROPY_BETA = 0.001
 LR_A = 0.001    # actor学习率
 LR_C = 0.001    # critic学习率
@@ -79,12 +78,11 @@ class Agent(object):
     @staticmethod
     def _get_loss_value(target_value, estimated_value, action, action_prob):
         # 根据TD Error计算Loss
-        td_error = tf.subtract(target_value,estimated_value, name='TD_error')
+        td_error = tf.subtract(target_value, estimated_value, name='TD_error')
 
         # 计算Critic loss
         with tf.name_scope('c_loss'):
-            # TD Error的平方和平均
-            critic_loss = tf.reduce_mean(tf.square(td_error))
+            critic_loss = tf.reduce_mean(tf.square(td_error))  # TD Error的平方和平均
 
         # 计算Actor loss
         # todo 重点分析Loss Function
@@ -111,34 +109,37 @@ class Agent(object):
 
     # 搭建Actor和Critic网络
     def _get_network_output(self, scope):
-        w_init = tf.random_normal_initializer(0., .1)
+        # 参数初始化工作非常重要
+        w_init = tf.contrib.layers.xavier_initializer()
+        state = tf.reshape(self.state, [-1, 4 * 4 * 1])
 
         # Actor网络
         with tf.variable_scope('actor'):
             # todo 卷积神经网络设计
-            flat_state = tf.reshape(self.state, [-1, 4 * 4 * 1])
-            flat = tf.layers.dense(inputs=flat_state,
-                                   units=64,
-                                   activation=tf.nn.relu6,
-                                   kernel_initializer=w_init,
-                                   name='la')
-            dense = tf.layers.dense(inputs=flat,
-                                    units=N_A,
-                                    activation=tf.nn.softmax,
-                                    kernel_initializer=w_init,
-                                    name='ap')
-            action_prob = tf.nn.softmax(dense, name="softmax_tensor")
+            actor_fc_layer_1 = tf.layers.dense(inputs=state,
+                                               units=64,
+                                               activation=tf.nn.relu6,
+                                               kernel_initializer=w_init,
+                                               name='actor_fc_layer_1')
+            actor_dropout_1 = tf.layers.dropout(
+                inputs=actor_fc_layer_1, rate=0.4, name='actor_dropout_1')
+            actor_fc_layer_2 = tf.layers.dense(inputs=actor_dropout_1,
+                                               units=N_A,
+                                               activation=tf.nn.relu,
+                                               kernel_initializer=w_init,
+                                               name='actor_fc_layer_2')
+            action_prob = tf.nn.softmax(actor_fc_layer_2, name="action_prob")
 
         # Critic网络
         # todo 卷积神经网络设计
         with tf.variable_scope('critic'):
-            flat_state = tf.reshape(self.state, [-1, 4 * 4 * 1])
-            l_c = tf.layers.dense(inputs=flat_state,
-                                  units=64,
-                                  activation=tf.nn.relu6,
-                                  kernel_initializer=w_init,
-                                  name='lc')
-            estimated_value = tf.layers.dense(inputs=l_c,
+            critic_fc_layer_1 = tf.layers.dense(inputs=state,
+                                                units=64,
+                                                activation=tf.nn.relu6,
+                                                kernel_initializer=w_init,
+                                                name='critic_fc_layer_1')
+            critic_dropout_1 = tf.layers.dropout(inputs=critic_fc_layer_1, rate=0.4)
+            estimated_value = tf.layers.dense(inputs=critic_dropout_1,
                                               units=1,
                                               kernel_initializer=w_init,
                                               name='estimated_value')
@@ -200,37 +201,38 @@ class Worker(object):
 
             SCORE.append(np.sum(state))
 
-            # 由后往前的算Target Value
+            # 得到最后一个state的Target Value
             if is_game_over:
                 target_value = 0
                 print(np.sum(state))
             else:
-                target_value = SESS.run(self.AC.estimated_value, {self.AC.state: state[np.newaxis]})[0, 0]
+                target_value = SESS.run(self.AC.estimated_value,
+                                        feed_dict={self.AC.state: state[np.newaxis]})[0, 0]
 
-            # Forward View计算各个State的Target Value
-            buf_target_value = []
-            for reward in buf_reward[::-1]:
-                target_value = reward + GAMMA * target_value
-                buf_target_value.append(target_value)
-            buf_target_value.reverse()
+            buf_target_value = Worker._get_target_value_list(reward_list=buf_reward, last_target_value=target_value)
 
-            # 数据：用于更新Actor和Critic的参数
-            buf_target_value = np.vstack(buf_target_value)
-
-            feed_dict = {
+            # 同步数据
+            self.AC.update_global(feed_dict={
                 self.AC.state: buf_state,
                 self.AC.action: buf_action,
                 self.AC.target_value: buf_target_value,
-            }
-            # print(feed_dict)
-
-            buf_state, buf_action, buf_reward = [], [], []
-
-            # 同步数据
-            self.AC.update_global(feed_dict)
+            })
             self.AC.pull_global()
 
             print("EPISODE_TIME: %d" % current_episode_time)
+
+    # 由后往前的算Target Value
+    @staticmethod
+    def _get_target_value_list(reward_list, last_target_value, discount_factor=0.9):
+
+        target_value_list = [last_target_value]
+
+        for reward in reward_list[:-1][::-1]:
+            last_target_value = reward + discount_factor * last_target_value
+            target_value_list.append(last_target_value)
+
+        target_value_list.reverse()
+        return np.vstack(target_value_list)
 
 
 if __name__ == "__main__":
@@ -268,6 +270,9 @@ if __name__ == "__main__":
     COORD.join(worker_threads)
 
     print(SCORE)
+    print(max(SCORE))
+    print(min(SCORE))
+    print(sum(SCORE)/len(SCORE))
     print(TD_ERROR)
 
     # plt.plot(np.arange(len(GLOBAL_RUNNING_R)), GLOBAL_RUNNING_R)
