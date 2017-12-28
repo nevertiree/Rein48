@@ -5,21 +5,23 @@ import numpy as np
 
 class Game:
 
-    state_matrix, state_matrix_size = None, 0
+    state_matrix, state_size = None, 0
 
     ACTION_SPACE = ["UP", "DOWN", "RIGHT", "LEFT"]
 
     # 生成新的界面，棋盘最小的尺寸为为4
     def __init__(self, table_matrix_size=4):
+        self.reward_size = 1
+        self.action_size = 4
         if table_matrix_size < 4:
-            self.state_matrix_size = 4
+            self.state_size = 4
         else:
-            self.state_matrix_size = table_matrix_size
+            self.state_size = table_matrix_size
             self.reset()
 
     # 刷新Matrix
     def reset(self):
-        self.state_matrix = self.create_matrix(self.state_matrix_size)
+        self.state_matrix = self.create_matrix(self.state_size)
         self.state_matrix = self.add_random_grid(self.state_matrix)
         return self.state_matrix
 
