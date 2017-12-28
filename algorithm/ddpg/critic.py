@@ -11,10 +11,11 @@ class Critic(Agent):
     def __init__(self, sess, game_env):
         super(Critic, self).__init__(game_env)
         self.sess = sess
-        with tf.variable_scope('Estimate_Critic'):
+
+        with tf.variable_scope('Critic'):
             self.estimate_q_value = self.critic_network('Estimate')
             self.estimate_para = tf.get_collection(key=tf.GraphKeys.GLOBAL_VARIABLES,
-                                                   scope='Estimate_Critic/Network')
+                                                   scope='Critic/Network')
 
         with tf.variable_scope('Target_Critic'):
             self.target_q_value = self.critic_network('Target')
@@ -22,11 +23,13 @@ class Critic(Agent):
             self.target_para = tf.get_collection(key=tf.GraphKeys.GLOBAL_VARIABLES,
                                                  scope='Target_Critic/Network')
 
-        with tf.variable_scope('Critic_Update'):
+        with tf.variable_scope('Critic/Update'):
             self.loss = tf.reduce_mean(tf.squared_difference(x=self.estimate_q_value,
                                                              y=self.target_q_value))
             self.optimizer = tf.train.AdamOptimizer()
             self.estimate_update = self.optimizer.minimize(self.loss)
+
+        with tf.variable_scope("Target_Critic/Update"):
             self.target_update = [tf.assign(ref=t, value=self.tau * t + (1 - self.tau) * e)
                                   for t, e in zip(self.target_para, self.estimate_para)]
 
@@ -38,7 +41,7 @@ class Critic(Agent):
         else:
             trainable = False
 
-        with tf.variable_scope(network_type + '_Critic/Network'):
+        with tf.variable_scope('Network'):
             init_w = tf.random_normal_initializer(mean=1, stddev=5)
             init_b = tf.constant_initializer(1)
 
@@ -88,9 +91,3 @@ class Critic(Agent):
             })
         else:
             self.sess.run(self.target_update)
-
-    @staticmethod
-    def num_2_one_hot(value, max_value):
-        one_hot_array = np.zeros(max_value)
-        one_hot_array[value] = 1
-        return one_hot_array

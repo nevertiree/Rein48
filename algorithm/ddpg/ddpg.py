@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 import os
-import time
 import shutil
 
 from algorithm.ddpg.actor import *
@@ -42,6 +41,7 @@ def run(sess, game_env):
             if done or replay.filled():
                 sample_replay = replay.sample()
                 # print(sample_replay['next_state'])
+                print(np.array(state))
                 target_next_action = actor.get_action(s=sample_replay['next_state'],
                                                       network_type='Target')
                 target_next_q_value = critic.get_q_value(a=target_next_action,
@@ -76,7 +76,13 @@ def run(sess, game_env):
 if __name__ == '__main__':
     game_environment = Game()
 
-    with tf.Session() as session:
+    with tf.Session(config=tf.ConfigProto(allow_soft_placement=True,
+                                          log_device_placement=False)) as session:
         session.run(tf.global_variables_initializer())
-        # actor_inst, critic_inst = Actor(session, game_environment), Critic(session, game_environment)
         run(session, game_environment)
+
+        log_dir = 'log/'
+        if os.path.exists(log_dir):
+            shutil.rmtree(log_dir)
+        tf.summary.FileWriter(log_dir, session.graph)
+        writer = tf.summary.FileWriter(logdir=log_dir)

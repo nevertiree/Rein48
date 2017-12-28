@@ -33,4 +33,8 @@ class Agent:
                                       shape=[None, self.reward_size],
                                       name='Q_Value')
 
-
+    @staticmethod
+    def num_2_one_hot(value, max_value):
+        one_hot_array = np.zeros(max_value)
+        one_hot_array[value] = 1
+        return one_hot_array

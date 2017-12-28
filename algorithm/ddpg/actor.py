@@ -10,13 +10,19 @@ class Actor(Agent):
 
     def __init__(self, sess, game_env):
         super(Actor, self).__init__(game_env)
-
         self.sess = sess
 
-        with tf.variable_scope('Estimate_Actor'):
+        with tf.variable_scope('Actor'):
             self.estimate_action = self.actor_network('Estimate')
             self.estimate_para = tf.get_collection(key=tf.GraphKeys.GLOBAL_VARIABLES,
-                                                   scope='Estimate_Actor/Estimate_Network')
+                                                   scope='Actor/Network')
+
+        with tf.variable_scope('Target_Actor'):
+            self.target_action = self.actor_network('Target')
+            self.target_para = tf.get_collection(key=tf.GraphKeys.GLOBAL_VARIABLES,
+                                                 scope='Target_Actor/Network')
+
+        with tf.variable_scope('Actor/Update'):
             self.optimizer = tf.train.AdamOptimizer()
             self.action_gradient = tf.gradients(ys=self.q_value,
                                                 xs=self.estimate_action)
@@ -26,10 +32,7 @@ class Actor(Agent):
             self.estimate_update = self.optimizer.apply_gradients(grads_and_vars=
                                                                   zip(self.policy_gradient, self.estimate_para))
 
-        with tf.variable_scope('Target_Actor'):
-            self.target_action = self.actor_network('Target')
-            self.target_para = tf.get_collection(key=tf.GraphKeys.GLOBAL_VARIABLES,
-                                                 scope='Target_Actor/Target_Network')
+        with tf.variable_scope('Target_Actor/Update'):
             self.target_update = [tf.assign(ref=t, value=self.tau * t + (1 - self.tau) * e)
                                   for t, e in zip(self.target_para, self.estimate_para)]
 
@@ -41,7 +44,7 @@ class Actor(Agent):
         else:
             trainable = False
 
-        with tf.variable_scope(network_type + '_Network', reuse=tf.AUTO_REUSE):
+        with tf.variable_scope('Network', reuse=tf.AUTO_REUSE):
             init_w = tf.random_normal_initializer(mean=1, stddev=2)
             init_b = tf.constant_initializer(value=1)
 
@@ -88,9 +91,3 @@ class Actor(Agent):
             })
         else:
             self.sess.run(self.target_update)
-
-    @staticmethod
-    def num_2_one_hot(value, max_value):
-        one_hot_array = np.zeros(max_value)
-        one_hot_array[value] = 1
-        return one_hot_array
