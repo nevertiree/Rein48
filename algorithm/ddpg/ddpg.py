@@ -11,8 +11,8 @@ from game.game_cli import *
 import tensorflow as tf
 import numpy as np
 
-MAX_EPISODE_NUM = 10
-MAX_STEP_NUM = 100
+MAX_EPISODE_NUM = 2000
+MAX_STEP_NUM = 1000
 
 GAMMA = 0.9
 
@@ -23,7 +23,10 @@ def run(sess, game_env):
     actor, critic = Actor(sess, game_env), Critic(sess, game_env)
     # Initialize Replay Buffer
     replay = Replay()
+    # Data Analysis
+    score_list = []
 
+    total_step_num = 0
     current_episode_num = 0
     while current_episode_num < MAX_EPISODE_NUM:
         # do something
@@ -39,9 +42,9 @@ def run(sess, game_env):
             replay.store([state, action, reward, next_state])
 
             if done or replay.filled():
+                score_list.append(np.sum(state))
+                print("Current Episode num is %s ..." % current_episode_num)
                 sample_replay = replay.sample()
-                # print(sample_replay['next_state'])
-                print(np.array(state))
                 target_next_action = actor.get_action(s=sample_replay['next_state'],
                                                       network_type='Target')
                 target_next_q_value = critic.get_q_value(a=target_next_action,
@@ -55,12 +58,14 @@ def run(sess, game_env):
                 critic.update('Estimate',
                               a=sample_replay['action'],
                               s=sample_replay['state'],
-                              t_q_v=target_q_value)
+                              t_q_v=target_q_value,
+                              iter_num=total_step_num)
 
                 actor.update('Estimate',
                              a=sample_replay['action'],
                              s=sample_replay['state'],
-                             e_q_v=estimate_q_value)
+                             e_q_v=estimate_q_value,
+                             iter_num=total_step_num)
 
                 critic.update('Target')
                 actor.update('Target')
@@ -69,8 +74,11 @@ def run(sess, game_env):
 
             state = next_state
             current_step_num += 1
+            total_step_num += 1
 
         current_episode_num += 1
+
+    return score_list
 
 
 if __name__ == '__main__':
@@ -79,9 +87,11 @@ if __name__ == '__main__':
     with tf.Session(config=tf.ConfigProto(allow_soft_placement=True,
                                           log_device_placement=False)) as session:
         session.run(tf.global_variables_initializer())
-        run(session, game_environment)
+        merged = tf.summary.merge_all()
 
-        log_dir = 'log/'
+        all_score = run(session, game_environment)
+
+        log_dir = 'log/ddpg'
         if os.path.exists(log_dir):
             shutil.rmtree(log_dir)
         tf.summary.FileWriter(log_dir, session.graph)

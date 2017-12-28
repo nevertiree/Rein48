@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 
+import os
+import shutil
+
 from algorithm.ddpg.agent import *
 
 import tensorflow as tf
@@ -11,6 +14,7 @@ class Critic(Agent):
     def __init__(self, sess, game_env):
         super(Critic, self).__init__(game_env)
         self.sess = sess
+        self.log_dir = 'log/critic'
 
         with tf.variable_scope('Critic'):
             self.estimate_q_value = self.critic_network('Estimate')
@@ -25,13 +29,21 @@ class Critic(Agent):
 
         with tf.variable_scope('Critic/Update'):
             self.loss = tf.reduce_mean(tf.squared_difference(x=self.estimate_q_value,
-                                                             y=self.target_q_value))
+                                                             y=self.target_q_value), name='TD_Error')
+            tf.summary.scalar(name='TD_Error', tensor=self.loss)
             self.optimizer = tf.train.AdamOptimizer()
             self.estimate_update = self.optimizer.minimize(self.loss)
 
         with tf.variable_scope("Target_Critic/Update"):
             self.target_update = [tf.assign(ref=t, value=self.tau * t + (1 - self.tau) * e)
                                   for t, e in zip(self.target_para, self.estimate_para)]
+
+        with tf.variable_scope("C_Summary"):
+            self.merge = tf.summary.merge_all()
+            if os.path.exists(self.log_dir):
+                shutil.rmtree(self.log_dir)
+            self.train_writer = tf.summary.FileWriter(logdir=self.log_dir + '/train', graph=self.sess.graph)
+            # self.test_writer = tf.summary.FileWriter(logdir=self.logdir + '/test', graph=self.sess.graph)
 
         self.sess.run(tf.global_variables_initializer())
 
@@ -47,16 +59,16 @@ class Critic(Agent):
 
             layer_unit = 32
 
-            state_weight = tf.get_variable(name='state_weight',
+            state_weight = tf.get_variable(name='State_Weight',
                                            shape=[self.state_size * self.state_size, layer_unit],
                                            initializer=init_w,
                                            trainable=trainable)
 
-            action_weight = tf.get_variable(name='action_weight',
+            action_weight = tf.get_variable(name='Action_Weight',
                                             shape=[self.action_size, layer_unit],
                                             initializer=init_w,
                                             trainable=trainable)
-            bias = tf.get_variable(name='bias', shape=[1, layer_unit], trainable=trainable)
+            bias = tf.get_variable(name='Bias', shape=[1, layer_unit], trainable=trainable)
 
             reshape_state = tf.reshape(tensor=self.state, shape=[-1, self.state_size * self.state_size])
             concat = tf.nn.relu(tf.matmul(reshape_state, state_weight) +
@@ -69,7 +81,7 @@ class Critic(Agent):
                                      kernel_initializer=init_w,
                                      bias_initializer=init_b,
                                      trainable=trainable)
-
+            tf.summary.histogram(name='Q_Value', values=output)
             return output
 
     def get_q_value(self, a, s, network_type):
@@ -81,13 +93,14 @@ class Critic(Agent):
         else:
             return self.sess.run(self.target_q_value, feed_dict={self.action: a, self.state: s})
 
-    def update(self, network_type, s=None, a=None, t_q_v=None):
+    def update(self, network_type, s=None, a=None, t_q_v=None, iter_num=None):
         if network_type == 'Estimate':
             a = [Critic.num_2_one_hot(a_item, self.action_size) for a_item in a]
-            self.sess.run(self.estimate_update, feed_dict={
+            summary, _ = self.sess.run([self.merge, self.estimate_update], feed_dict={
                 self.state: s,
                 self.action: a,
                 self.target_q_value: t_q_v
             })
+            self.train_writer.add_summary(summary, iter_num)
         else:
             self.sess.run(self.target_update)
