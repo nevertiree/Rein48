@@ -1,39 +1,28 @@
 # -*- coding: utf-8 -*-
 
-import os
-import shutil
-
 from algorithm.ddpg.actor import *
 from algorithm.ddpg.critic import *
 from algorithm.ddpg.replay import *
-from game.game_cli import *
 
-import tensorflow as tf
 import numpy as np
 
-MAX_EPISODE_NUM = 2000
-MAX_STEP_NUM = 1000
-
-GAMMA = 0.9
+GAMMA = 0.99
 
 
-def run(sess, game_env):
+def ddpg(sess, game_env, max_episode_num=2000, max_step_num=1000):
 
-    # Initialize Estimate and Target Network
-    actor, critic = Actor(sess, game_env), Critic(sess, game_env)
-    # Initialize Replay Buffer
-    replay = Replay()
+    # Initialize Estimate and Target Network, initialize Replay Buffer
+    actor, critic, replay = Actor(sess, game_env), Critic(sess, game_env), Replay()
     # Data Analysis
     score_list = []
 
     total_step_num = 0
     current_episode_num = 0
-    while current_episode_num < MAX_EPISODE_NUM:
-        # do something
+    while current_episode_num < max_episode_num:
         state = game_env.reset()
 
         current_step_num = 0
-        while current_step_num < MAX_STEP_NUM:
+        while current_step_num < max_step_num:
             # Select Action according to State
             action = actor.get_action(np.array(state), 'Estimate')[0]
             # Execute this action and get feedback
@@ -79,20 +68,3 @@ def run(sess, game_env):
         current_episode_num += 1
 
     return score_list
-
-
-if __name__ == '__main__':
-    game_environment = Game()
-
-    with tf.Session(config=tf.ConfigProto(allow_soft_placement=True,
-                                          log_device_placement=False)) as session:
-        session.run(tf.global_variables_initializer())
-        merged = tf.summary.merge_all()
-
-        all_score = run(session, game_environment)
-
-        log_dir = 'log/ddpg'
-        if os.path.exists(log_dir):
-            shutil.rmtree(log_dir)
-        tf.summary.FileWriter(log_dir, session.graph)
-        writer = tf.summary.FileWriter(logdir=log_dir)
