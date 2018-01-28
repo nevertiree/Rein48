@@ -6,7 +6,7 @@ from game.GameClient import *
 class TestGameClient:
     test_game_client = Game()
 
-    def test_is_matrix_full(self):
+    def test_has_matrix_filled(self):
         # Test 1
         test_matrix = [
             [1, 1, 1, 1],
@@ -14,7 +14,7 @@ class TestGameClient:
             [1, 1, 1, 1],
             [1, 1, 1, 1],
         ]
-        assert Game.is_matrix_full(test_matrix)
+        assert Game.has_matrix_filled(test_matrix)
 
         # Test 2
         test_matrix = [
@@ -23,7 +23,7 @@ class TestGameClient:
             [1, 1, 1, 1],
             [1, 1, 1, 1],
         ]
-        assert Game.is_matrix_full(test_matrix)
+        assert Game.has_matrix_filled(test_matrix)
 
         # Test 3
         test_matrix = [
@@ -32,7 +32,7 @@ class TestGameClient:
             [1, 1, 1, 1],
             [1, 1, 1, 1],
         ]
-        assert not Game.is_matrix_full(test_matrix)
+        assert not Game.has_matrix_filled(test_matrix)
 
     def test_is_game_over(self):
         test_matrix = [
@@ -59,8 +59,30 @@ class TestGameClient:
         ]
         assert not Game.has_game_over(test_matrix)
 
-    def test_add_random_grid(self):
-        pass
+    def test_random_fill_grid(self):
+        test_matrix = [
+            [0, 0, 0, 0],
+            [0, 2, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+        ]
+        assert sum(Game.random_fill_grid(test_matrix)) - sum(test_matrix) == 2 or 4
+
+        test_matrix = [
+            [2, 4, 2, 4],
+            [4, 2, 4, 2],
+            [2, 4, 2, 4],
+            [4, 2, 4, 0],
+        ]
+        assert sum(Game.random_fill_grid(test_matrix)) - sum(test_matrix) == 2 or 4
+
+        test_matrix = [
+            [2, 4, 2, 4],
+            [4, 2, 4, 2],
+            [2, 4, 2, 4],
+            [4, 2, 4, 2],
+        ]
+        assert sum(Game.random_fill_grid(test_matrix)) - sum(test_matrix) == 0
 
     def test_random_action(self):
         pass

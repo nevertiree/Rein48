@@ -28,16 +28,12 @@ class Game:
 
     def reset(self):
         self.state_matrix = self.create_matrix(self.state_space_size)
-        self.state_matrix = self.add_random_grid(self.state_matrix)
+        self.state_matrix = self.random_fill_grid(self.state_matrix)
         return self.state_matrix
 
-    # 根据Action改变State，输出新的State，本次得到的Reward，以及游戏是否结束。
+    """Input the action signal ,and update game state to next step. """
     def step(self, action):
-        """
-        Update this game to next step, according to the input action signal.
-        :param action: outside input action signal
-        :return: new game state, reward, death signal
-        """
+        """ Return: new game state, reward, death signal """
 
         """Marks whether this game can continue. """
         is_dead = False
@@ -48,7 +44,7 @@ class Game:
             return self.state_matrix, 0, is_dead
 
         """Because this game is not over, we fill a grid randomly. """
-        self.state_matrix = Game.add_random_grid(self.state_matrix)
+        self.state_matrix = Game.random_fill_grid(self.state_matrix)
 
         """Update the game according to current state and action. """
         self.state_matrix, reward = self.update_matrix(self.state_matrix, action)
@@ -90,15 +86,11 @@ class Game:
             matrix[i].extend(row)
         return matrix
 
-    # 判断Matrix是否已经被填满
-    @staticmethod
-    def is_matrix_full(matrix): return 0 not in [x for item in matrix for x in item]
-
     """Check whether this game is over. """
     @staticmethod
     def has_game_over(game_matrix):
         """If game table isn't filled, this game isn't over. """
-        if not Game.is_matrix_full(game_matrix):
+        if not Game.has_matrix_filled(game_matrix):
             return False
         else:
             """ This game can be continue , if some grid has an adjacent grid which has the same value with it, """
@@ -126,16 +118,37 @@ class Game:
 
             return True
 
-    # 在空位随机添加滑块
+    """Check whether the game table has been filled. """
     @staticmethod
-    def add_random_grid(matrix):
-        while True:
-            for row_num in range(len(matrix)):
-                for item_num in range(len(matrix[row_num])):
-                    if matrix[row_num][item_num] == 0 and \
-                            random.uniform(0, 1) > 0.95:
-                        matrix[row_num][item_num] = 2
-                        return matrix
+    def has_matrix_filled(game_matrix): return 0 not in [x for item in game_matrix for x in item]
+
+    """Fill blank grid in the game matrix. """
+    @staticmethod
+    def random_fill_grid(game_matrix):
+        """Attach blank grid index list"""
+        blank_grid_index_list = []
+        length = len(game_matrix)
+        for i in range(length):
+            for j in range(length):
+                if game_matrix[i][j] != 0:
+                    blank_grid_index_list.append((i, j))
+
+        # If game matrix is filled, then end this function.
+        if not blank_grid_index_list:
+            return game_matrix
+
+        """Choose a blank grid randomly. """
+        blank_gird_list_length = len(blank_grid_index_list)
+        random_grid_index = random.randint(0, blank_gird_list_length-1)
+        i, j = blank_grid_index_list[random_grid_index]
+
+        """Fill this grid with number 2 or 4. """
+        if random.uniform(0, 1) > 0.5:
+            game_matrix[i][j] = 2
+        else:
+            game_matrix[i][j] = 4
+
+        return game_matrix
 
     # 随机的做出移动
     @staticmethod
