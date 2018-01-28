@@ -5,40 +5,52 @@ import numpy as np
 
 class Game:
 
-    state_matrix, state_size = None, 0
+    state_matrix, state_space_size = None, 0
 
     ACTION_SPACE = ["UP", "DOWN", "RIGHT", "LEFT"]
 
-    # 生成新的界面，棋盘最小的尺寸为为4
     def __init__(self, table_matrix_size=4):
-        self.reward_size = 1
-        self.action_size = 4
-        if table_matrix_size < 4:
-            self.state_size = 4
-        else:
-            self.state_size = table_matrix_size
-            self.reset()
+        """Attach game space size. """
+        self.reward_space_size = 1
+        self.action_space_size = 4
 
-    # 刷新Matrix
+        if table_matrix_size < 4:
+            self.state_space_size = 4
+        else:
+            self.state_space_size = table_matrix_size
+
+        """Create a new chess table, and fill grids randomly. """
+        self.reset()
+
+    """
+    Public method for machine learning engine.
+     """
+
     def reset(self):
-        self.state_matrix = self.create_matrix(self.state_size)
+        self.state_matrix = self.create_matrix(self.state_space_size)
         self.state_matrix = self.add_random_grid(self.state_matrix)
         return self.state_matrix
 
     # 根据Action改变State，输出新的State，本次得到的Reward，以及游戏是否结束。
     def step(self, action):
-        # 首先判断游戏是否可以继续进行
+        """
+        Update this game to next step, according to the input action signal.
+        :param action: outside input action signal
+        :return: new game state, reward, death signal
+        """
+
+        """Marks whether this game can continue. """
         is_dead = False
 
-        # 游戏已经结束
-        if Game.is_game_over(self, Game.is_matrix_full(self.state_matrix)):
+        """Check if the game is over. """
+        if Game.has_game_over(self.state_matrix):
             is_dead = True
             return self.state_matrix, 0, is_dead
 
-        # 游戏没有结束，在空格处随机生成一个新的滑块
+        """Because this game is not over, we fill a grid randomly. """
         self.state_matrix = Game.add_random_grid(self.state_matrix)
 
-        # 更新State，获得新的State和Reward
+        """Update the game according to current state and action. """
         self.state_matrix, reward = self.update_matrix(self.state_matrix, action)
 
         return self.state_matrix, reward, is_dead
@@ -63,6 +75,10 @@ class Game:
         # 游戏结束
         return np.sum(self.state_matrix)
 
+    """
+    Private method for game logic.
+    """
+
     @staticmethod
     def create_matrix(table_size=4):
         # 生成一个空的棋盘，这个实现比较蠢
@@ -76,29 +92,39 @@ class Game:
 
     # 判断Matrix是否已经被填满
     @staticmethod
-    def is_matrix_full(matrix):
-        if 0 not in [x for item in matrix for x in item]:
+    def is_matrix_full(matrix): return 0 not in [x for item in matrix for x in item]
+
+    """Check whether this game is over. """
+    @staticmethod
+    def has_game_over(game_matrix):
+        """If game table isn't filled, this game isn't over. """
+        if not Game.is_matrix_full(game_matrix):
+            return False
+        else:
+            """ This game can be continue , if some grid has an adjacent grid which has the same value with it, """
+
+            length = len(game_matrix)
+            """ We must find the grid-tuple. """
+            for i in range(length):
+                for j in range(length):
+                    # Gird which not in the first row.
+                    if i != 0:
+                        if game_matrix[i][j] == game_matrix[i-1][j]:
+                            return False
+                    # Gird which not in the first column. .
+                    if j != 0:
+                        if game_matrix[i][j] == game_matrix[i][j-1]:
+                            return False
+                    # Gird which not in the last row.
+                    if i != length - 1:
+                        if game_matrix[i][j] == game_matrix[i+1][j]:
+                            return False
+                    # Gird which not in the last column. .
+                    if j != length - 1:
+                        if game_matrix[i][j] == game_matrix[i][j+1]:
+                            return False
+
             return True
-        else:
-            return False
-
-    # 判断游戏是否已经结束
-    def is_game_over(self, is_full_matrix):
-        # 这个写法太蠢了
-        if is_full_matrix:
-            # 试着左右移动一下
-            for signal in ["UP", "DOWN", "RIGHT", "LEFT"]:
-                self.update_matrix(self.state_matrix, signal)
-
-            # 抢救无效
-            if self.is_matrix_full(self.state_matrix):
-                # print(np.matrix(self.state_matrix))
-                # print("Ops! Game Over !!!")
-                return True
-            else:
-                return False
-        else:
-            return False
 
     # 在空位随机添加滑块
     @staticmethod
