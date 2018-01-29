@@ -330,3 +330,11 @@ class TestGameClient:
         print(actual_matrix)
         assert except_matrix == actual_matrix
 
+    def test_print_terminal(self):
+        test_matrix = [[4, 0, 0, 2], [0, 0, 0, 0], [0, 0, 0, 0], [8, 0, 0, 0]]
+        Game.print_terminal(test_matrix)
+
+
+if __name__ == '__main__':
+    tester = TestGameClient()
+    tester.test_print_terminal()

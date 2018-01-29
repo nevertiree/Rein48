@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
 import random
+import copy
 import numpy as np
 
 
 class Game:
 
     state_matrix, state_space_size = None, 0
-
-    ACTION_SPACE = ["UP", "DOWN", "RIGHT", "LEFT"]
 
     def __init__(self, table_matrix_size=4):
         """Attach game space size. """
@@ -22,63 +21,49 @@ class Game:
         """Create a new chess table, and fill grids randomly. """
         self.reset()
 
-    """
-    Public method for machine learning engine.
-     """
+    """ Public method for machine learning engine. """
 
     def reset(self, display=False):
         self.state_matrix = self.create_matrix(self.state_space_size)
         self.state_matrix = self.random_fill_grid(self.state_matrix)
         if display:
-            print(np.mat(self.state_matrix))
+            Game.print_terminal(np.mat(self.state_matrix))
         return self.state_matrix
 
-    """Input the action signal ,and update game state to next step. """
     def step(self, action):
-        """ Return: new game state, reward, death signal """
-
-        """Marks whether this game can continue. """
-        is_dead = False
-        has_change = True
-
-        """Check if the game is over. """
-        if Game.has_game_over(self.state_matrix):
-            is_dead = True
-            return self.state_matrix, 0, is_dead
-
-        """Because this game is not over, we fill a grid randomly. """
-        if has_change:
-            self.state_matrix = Game.random_fill_grid(self.state_matrix)
+        """Input the action signal ,and update game state to next step.
+        :return: new game state, reward, death signal """
 
         """Update the game according to current state and action. """
-        self.state_matrix, reward, has_change = self.update_matrix(self.state_matrix, action)
+        self.state_matrix, reward, has_changed = self.update_matrix(self.state_matrix, action)
 
-        return self.state_matrix, reward, is_dead
+        """Because this game is not over, we fill a grid randomly. """
+        if has_changed:
+            self.state_matrix = Game.random_fill_grid(self.state_matrix)
 
-    def play(self, strategy="RAND", show_result=False):
+        return self.state_matrix, reward, Game.has_game_over(self.state_matrix)
+
+    def play(self, strategy="RAND", show_result=True):
         self.reset()
         is_game_over = False
 
-        # 完成一局游戏
         while not is_game_over:
-            print(np.array(self.state_matrix))
+            if show_result:
+                Game.print_terminal(np.array(self.state_matrix))
             if strategy == "RAND":
                 action = self.random_action()
             else:
                 action = input()
-
             self.state_matrix, _, is_game_over = self.step(action)
 
-        # 游戏结束
+        if show_result:
+            Game.print_terminal(self.state_matrix)
         return np.sum(self.state_matrix)
 
-    """
-    Private method for game logic.
-    """
+    """ Private method for game logic. """
 
     @staticmethod
     def create_matrix(table_size=4):
-        # 生成一个空的棋盘，这个实现比较蠢
         matrix = [[] for _ in range(table_size)]
         for i in range(table_size):
             row = []
@@ -87,17 +72,17 @@ class Game:
             matrix[i].extend(row)
         return matrix
 
-    """Check whether this game is over. """
     @staticmethod
     def has_game_over(game_matrix):
+        """ Check whether this game is over.
+        :return: has_game_over (Boolean) """
+
         """If game table isn't filled, this game isn't over. """
         if not Game.has_table_filled(game_matrix):
             return False
         else:
-            """ This game can be continue , if some grid has an adjacent grid which has the same value with it, """
-
             length = len(game_matrix)
-            """ We must find the grid-tuple. """
+            """ This game can be continue , if some grid has an adjacent grid which has the same value with it, """
             for i in range(length):
                 for j in range(length):
                     # Gird which not in the first row.
@@ -116,16 +101,20 @@ class Game:
                     if j != length - 1:
                         if game_matrix[i][j] == game_matrix[i][j+1]:
                             return False
-
             return True
 
-    """Check whether the game table has been filled. """
     @staticmethod
-    def has_table_filled(game_matrix): return 0 not in [x for item in game_matrix for x in item]
+    def has_table_filled(game_matrix):
+        """ Check whether the game table has been filled.
+        :return: has_table_filled (boolean) """
+        return 0 not in [x for item in game_matrix for x in item]
 
-    """Fill blank grid in the game matrix. """
     @staticmethod
     def random_fill_grid(game_matrix):
+        """ Fill blank grid in the game matrix.
+        :param game_matrix:
+        :return: new_game_matrix """
+
         """Attach blank grid index list"""
         blank_grid_index_list = []
         length = len(game_matrix)
@@ -134,42 +123,33 @@ class Game:
                 if game_matrix[i][j] == 0:
                     blank_grid_index_list.append((i, j))
 
-        # If game matrix is filled, then end this function.
+        """Exit function, while game matrix is filled."""
         if not blank_grid_index_list:
             return game_matrix
 
-        """Choose a blank grid randomly. """
-        blank_gird_list_length = len(blank_grid_index_list)
-        random_grid_index = random.randint(0, blank_gird_list_length-1)
+        """Choose blank grid randomly. """
+        random_grid_index = random.randint(0, len(blank_grid_index_list)-1)
         i, j = blank_grid_index_list[random_grid_index]
 
-        """Fill this grid with number 2 or 4. """
-        if random.uniform(0, 1) > 0.5:
-            game_matrix[i][j] = 2
-        else:
-            game_matrix[i][j] = 4
+        """Fill chose blank grid with number 2 or 4. """
+        game_matrix[i][j] = 2 if (random.uniform(0, 1) > 0.5) else 4
 
         return game_matrix
 
-    # 随机的做出移动
     @staticmethod
     def random_action():
-        rand_num = random.uniform(0, 1)
-        # Up Down Left Right :  0.25 0.25 0.25 0.25
-        if rand_num <= 0.25:
-            return "UP"
-        elif rand_num <= 0.5:
-            return "DOWN"
-        elif rand_num <= 0.75:
-            return "LEFT"
-        else:
-            return "RIGHT"
+        action_dict = {0: "UP", 1: "DOWN", 2: "LEFT", 3: "RIGHT", }
+        return action_dict[random.randint(0, 3)]
 
-    """Input the action signal ,and update game state to next step. """
     @staticmethod
     def update_matrix(matrix, action):
-        """ Return: new_matrix, reward, has_changed"""
-        backup_matrix = matrix
+        """ Input the action signal ,and update game state to next step.
+        :return: new_matrix, reward, has_changed """
+
+        """If the action has effect (has_changed = True), 
+        then the new matrix must be different from the origin one (origin_matrix != matrix) = True
+        P.S. Must use Python deep copy module !!! """
+        origin_matrix = copy.deepcopy(matrix)
         reward = 0
 
         if action in ["UP", "Up", "U", "up", "u", 0]:
@@ -212,8 +192,7 @@ class Game:
 
                         """Move j-pointer toward next node."""
                         j += 1
-
-            return matrix, reward, backup_matrix != matrix
+            return matrix, reward, (origin_matrix != matrix)
 
         if action in ["DOWN", "Down", "D", "down", "d", 1]:
             for col_num in range(len(matrix[0])):
@@ -237,7 +216,7 @@ class Game:
                                 matrix[j][col_num] = 0
                             i -= 1
                         j -= 1
-            return matrix, reward, backup_matrix != matrix
+            return matrix, reward, (origin_matrix != matrix)
 
         if action in ["LEFT", "Left", "L", "left", "l", 2]:
             for col_num in range(len(matrix)):
@@ -261,7 +240,7 @@ class Game:
                                 matrix[col_num][j] = 0
                             i += 1
                         j += 1
-            return matrix, reward, backup_matrix != matrix
+            return matrix, reward, (origin_matrix != matrix)
 
         if action in ["RIGHT", "Right", "R", "right", "r", 3]:
             for col_num in range(len(matrix)):
@@ -285,9 +264,26 @@ class Game:
                                 matrix[col_num][j] = 0
                             i -= 1
                         j -= 1
-            return matrix, reward, backup_matrix != matrix
+            return matrix, reward, (origin_matrix != matrix)
+
+        raise ValueError("Input action signal is wrong. ")
+
+    @staticmethod
+    def print_terminal(matrix):
+        width, height = len(matrix[0]), len(matrix)
+        print("-" * (1 + 7 * width))
+        for i in range(height):
+            print("|", end="")
+            for j in range(width):
+                if matrix[i][j] != 0:
+                    print(str(matrix[i][j]).center(6), end="")
+                else:
+                    print(" " * 6, end="")
+                print("|", end="")
+            print("\n", end="")
+            print("-" * (1 + 7 * width))
 
 
 if __name__ == '__main__':
     game = Game()
-    game.play(strategy="H")
+    game.play(strategy="RAND")
