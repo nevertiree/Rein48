@@ -1,6 +1,15 @@
 # -*- coding: utf-8 -*-
-import random
+
+"""
+@author: Lance Wang
+@github: https://github.com/nevertiree
+@zhihu: https://www.zhihu.com/people/wang-ling-xiao-37-31
+@license: Apache Licence
+"""
+
+import argparse
 import copy
+import random
 import numpy as np
 
 
@@ -43,17 +52,36 @@ class Game:
 
         return self.state_matrix, reward, Game.has_game_over(self.state_matrix)
 
-    def play(self, strategy="RAND", show_result=True):
+    def play(self, strategy="hand", show_result=True):
         self.reset()
         is_game_over = False
+
+        if strategy == "hand":
+            print("#####################################################\n"
+                  "    ---         ------           /|       /-------\  \n"
+                  "  /     \     /        \        / |      |         | \n"
+                  " |       |   |          |      /  |      |         | \n"
+                  "        /    |          |     /   |       \_______/  \n"
+                  "      /      |          |    /    |       /       \  \n"
+                  "    /        |          |   /_____|_____ |         | \n"
+                  "  /           \        /          |      |         | \n"
+                  " ---------      ------            |       \_______/  \n"
+                  "PLEASE INPUT [ACTION DIRECTION] TO PLAY THIS GAME.\n"
+                  "Left: [L] or [l] \n" "Right:[R] or [r] \n" "Up:   [U] or [u] \n" "Down: [D] or [d] \n"
+                  "#####################################################")
 
         while not is_game_over:
             if show_result:
                 Game.print_terminal(np.array(self.state_matrix))
-            if strategy == "RAND":
+
+            if strategy == "rand":
                 action = self.random_action()
-            else:
+            elif strategy == "hand":
+                print("Input action direction, then press ENTER button: ", end="")
                 action = input()
+            else:
+                break
+
             self.state_matrix, _, is_game_over = self.step(action)
 
         if show_result:
@@ -132,7 +160,7 @@ class Game:
         i, j = blank_grid_index_list[random_grid_index]
 
         """Fill chose blank grid with number 2 or 4. """
-        game_matrix[i][j] = 2 if (random.uniform(0, 1) > 0.5) else 4
+        game_matrix[i][j] = 2 if (random.uniform(0, 1) > 0.1) else 4
 
         return game_matrix
 
@@ -284,6 +312,16 @@ class Game:
             print("-" * (1 + 7 * width))
 
 
-if __name__ == '__main__':
+def main():
+    parser = argparse.ArgumentParser(description="Play terminal 2048...")
+    parser.add_argument('-t', '--type', dest='type', type=str, default='hand',
+                        help='Auto-control or hand-control')
+
+    args = parser.parse_args()
+
     game = Game()
-    game.play(strategy="RAND")
+    game.play(strategy=args.type)
+
+
+if __name__ == '__main__':
+    main()
