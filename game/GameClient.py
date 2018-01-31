@@ -7,7 +7,6 @@
 @license: Apache Licence
 """
 
-import argparse
 import copy
 import random
 import numpy as np
@@ -27,7 +26,6 @@ class Game:
         else:
             self.state_space_size = table_matrix_size
 
-        """Create a new chess table, and fill grids randomly. """
         self.reset()
 
     """ Public method for machine learning engine. """
@@ -51,42 +49,6 @@ class Game:
             self.state_matrix = Game.random_fill_grid(self.state_matrix)
 
         return self.state_matrix, reward, Game.has_game_over(self.state_matrix)
-
-    def play(self, strategy="hand", show_result=True):
-        self.reset()
-        is_game_over = False
-
-        if strategy == "hand":
-            print("#####################################################\n"
-                  "    ---         ------           /|       /-------\  \n"
-                  "  /     \     /        \        / |      |         | \n"
-                  " |       |   |          |      /  |      |         | \n"
-                  "        /    |          |     /   |       \_______/  \n"
-                  "      /      |          |    /    |       /       \  \n"
-                  "    /        |          |   /_____|_____ |         | \n"
-                  "  /           \        /          |      |         | \n"
-                  " ---------      ------            |       \_______/  \n"
-                  "PLEASE INPUT [ACTION DIRECTION] TO PLAY THIS GAME.\n"
-                  "Left: [L] or [l] \n" "Right:[R] or [r] \n" "Up:   [U] or [u] \n" "Down: [D] or [d] \n"
-                  "#####################################################")
-
-        while not is_game_over:
-            if show_result:
-                Game.print_terminal(np.array(self.state_matrix))
-
-            if strategy == "rand":
-                action = self.random_action()
-            elif strategy == "hand":
-                print("Input action direction, then press ENTER button: ", end="")
-                action = input()
-            else:
-                break
-
-            self.state_matrix, _, is_game_over = self.step(action)
-
-        if show_result:
-            Game.print_terminal(self.state_matrix)
-        return np.sum(self.state_matrix)
 
     """ Private method for game logic. """
 
@@ -163,11 +125,6 @@ class Game:
         game_matrix[i][j] = 2 if (random.uniform(0, 1) > 0.1) else 4
 
         return game_matrix
-
-    @staticmethod
-    def random_action():
-        action_dict = {0: "UP", 1: "DOWN", 2: "LEFT", 3: "RIGHT", }
-        return action_dict[random.randint(0, 3)]
 
     @staticmethod
     def update_matrix(matrix, action):
@@ -294,7 +251,7 @@ class Game:
                         j -= 1
             return matrix, reward, (origin_matrix != matrix)
 
-        raise ValueError("Input action signal is wrong. ")
+        raise ValueError("Input action signal is wrong:\n You must input valid inputs, such as  [U] [D] [L] [R]... ")
 
     @staticmethod
     def print_terminal(matrix):
@@ -310,18 +267,3 @@ class Game:
                 print("|", end="")
             print("\n", end="")
             print("-" * (1 + 7 * width))
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Play terminal 2048...")
-    parser.add_argument('-t', '--type', dest='type', type=str, default='hand',
-                        help='Auto-control or hand-control')
-
-    args = parser.parse_args()
-
-    game = Game()
-    game.play(strategy=args.type)
-
-
-if __name__ == '__main__':
-    main()
